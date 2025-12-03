@@ -1,0 +1,22 @@
+# -------------------------------
+# Chat App Server Dockerfile
+# -------------------------------
+
+# 1) Base Python image 
+FROM python:3.10-slim
+
+# 2) Set working directory inside container
+WORKDIR /app
+
+# 3) Copy server files to container
+COPY . /app
+
+# 4) Install Python dependencies
+# You can add more if needed
+RUN pip install --no-cache-dir sqlalchemy werkzeug
+
+# 5) Expose chat server port
+EXPOSE 5000
+
+# 6) Run server when container starts
+CMD ["python", "server.py"]

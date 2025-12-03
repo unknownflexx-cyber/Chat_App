@@ -4,28 +4,23 @@ import socket
 import threading
 import json
 from db import create_user, verify_user, save_message, get_messages_after
+from models import init_db
 
 
-HOST = "127.0.0.1"   # Localhost
+HOST = "0.0.0.0"     # Localhost
 PORT = 5000          # Server port
 
 
-clients = {}         # {username: conn}
-last_message_id = 0  # For message polling
+clients = {}        # Here we are storing the clients
 
 
-# -----------------------------
-# Helper: Send JSON to client
-# -----------------------------
+# Here we are sending the JSON data to the client
 def send_json(conn, data):
     conn.sendall((json.dumps(data) + "\n").encode())
 
 
-# -----------------------------
-# Handle each connected client
-# -----------------------------
+# Here we are handling each connected client
 def handle_client(conn, addr):
-    global last_message_id
     print(f"[NEW CONNECTION] {addr} connected.")
 
     username = None
@@ -42,9 +37,7 @@ def handle_client(conn, addr):
 
                 action = msg.get("action")
 
-                # -----------------------------
-                # REGISTER USER
-                # -----------------------------
+                # Here we are handling the registration flow
                 if action == "register":
                     user = msg["username"]
                     pasw = msg["password"]
@@ -52,9 +45,7 @@ def handle_client(conn, addr):
                     ok, info = create_user(user, pasw)
                     send_json(conn, {"response": "register", "success": ok, "info": info})
 
-                # -----------------------------
-                # LOGIN USER
-                # -----------------------------
+                # Here we are handling the login flow
                 elif action == "login":
                     user = msg["username"]
                     pasw = msg["password"]
@@ -66,26 +57,22 @@ def handle_client(conn, addr):
                     else:
                         send_json(conn, {"response": "login", "success": False})
 
-                # -----------------------------
-                # SEND MESSAGE
-                # -----------------------------
+                # Here we are handling the sending of messages
                 elif action == "send_message":
                     content = msg["content"]
 
-                    save_message(username, content)
-                    last_message_id += 1
+                    msg_id = save_message(username, content)
 
-                    # broadcast to all
+                    # Here we are broadcasting the message to all clients
                     for user_conn in clients.values():
                         send_json(user_conn, {
                             "response": "new_message",
+                            "id": msg_id,
                             "from": username,
                             "content": content
                         })
 
-                # -----------------------------
-                # POLLING: Get new messages
-                # -----------------------------
+                # Here we are polling the server for new messages
                 elif action == "poll":
                     last_id = msg.get("last_id", 0)
                     messages = get_messages_after(last_id)
@@ -100,6 +87,10 @@ def handle_client(conn, addr):
                         })
 
                     send_json(conn, {"response": "poll", "messages": response})
+
+                # Here we are handling unknown actions
+                else:
+                    send_json(conn, {"response": "error", "info": "Unsupported action"})
     finally:
         if username and username in clients:
             del clients[username]
@@ -107,11 +98,11 @@ def handle_client(conn, addr):
         print(f"[DISCONNECTED] {addr} disconnected.")
         
 
-# -----------------------------
-# Server Startup
-# -----------------------------
+# Here we are starting the server
 def start_server():
     print("[STARTING SERVER] Chat Server running...")
+    # Ensuring database tables exist
+    init_db()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
