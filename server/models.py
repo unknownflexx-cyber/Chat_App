@@ -1,10 +1,13 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 #  here we are setting up the database
-engine = create_engine("sqlite:///chat.db", echo=True)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = (PROJECT_ROOT / "chat.db").resolve()
+engine = create_engine(f"sqlite:///{DB_PATH.as_posix()}", echo=True)
 Base = declarative_base()
 SessionLocal = sessionmaker(bind=engine)
 
@@ -26,9 +29,6 @@ def init_db():
     print("Database created successfully!")
 
 
-# Here we are initializing the database
-if __name__ == "__main__":
-    init_db()
 
 
 
@@ -41,4 +41,10 @@ class Message(Base):
     sender = Column(String(50), nullable=False)
     receiver = Column(String(50), nullable=False)
     text = Column(Text, nullable=False)
-    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)) 
+
+
+    # Here we are initializing the database
+if __name__ == "__main__":
+    init_db()
+
