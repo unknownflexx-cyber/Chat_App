@@ -1,4 +1,13 @@
-# server.py
+"""
+TCP chat server for the multi-user chatroom application.
+
+This server:
+- Accepts client connections over TCP.
+- Handles login and registration.
+- Stores messages in the database.
+- Broadcasts new messages to all connected users.
+- Supports polling for message history.
+"""
 
 import socket
 import threading
@@ -7,20 +16,30 @@ from db import create_user, verify_user, save_message, get_messages_after
 from models import init_db
 
 
-HOST = "0.0.0.0"     # Localhost
-PORT = 5000          # Server port
+HOST = "0.0.0.0"
+PORT = 5000
 
 
-clients = {}        # Here we are storing the clients
+clients = {}    # Here we are storing the clients
 
 
-# Here we are sending the JSON data to the client
 def send_json(conn, data):
+    """
+    Here we are sending a Python dictionary as a JSON message terminated by a newline.
+
+    Args:
+        conn (socket.socket): The connection to send through.
+        data (dict): The JSON-serializable data to send.
+    """
     conn.sendall((json.dumps(data) + "\n").encode())
 
 
-# Here we are handling each connected client
 def handle_client(conn, addr):
+    """
+    Here we are handling communication with a single connected client.
+
+ 
+    """
     print(f"[NEW CONNECTION] {addr} connected.")
 
     username = None
@@ -61,7 +80,7 @@ def handle_client(conn, addr):
                 elif action == "send_message":
                     content = msg["content"]
 
-                    msg_id = save_message(username, content)
+                    msg_id, ts = save_message(username, content)
 
                     # Here we are broadcasting the message to all clients
                     for user_conn in clients.values():
@@ -69,7 +88,8 @@ def handle_client(conn, addr):
                             "response": "new_message",
                             "id": msg_id,
                             "from": username,
-                            "content": content
+                            "content": content,
+                            "timestamp": ts
                         })
 
                 # Here we are polling the server for new messages
@@ -98,10 +118,12 @@ def handle_client(conn, addr):
         print(f"[DISCONNECTED] {addr} disconnected.")
         
 
-# Here we are starting the server
 def start_server():
+    """
+    Here we are starting the TCP server.
+   
+    """
     print("[STARTING SERVER] Chat Server running...")
-    # Ensuring database tables exist
     init_db()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -1,11 +1,28 @@
+"""
+TCP chat client for the multi-user chatroom application.
+
+This client:
+- Connects to the chat server over a TCP socket.
+- Allows the user to register or log in.
+- Sends chat messages to the server.
+- Receives real-time broadcast messages from the server.
+- Polls the server periodically to retrieve missed messages from history.
+- Deduplicates messages using a global last_message_id.
+"""
+
 import socket
 import json
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 
-HOST = "127.0.0.1"  
-PORT = 5000              
+import os
+
+HOST = os.getenv("CHAT_SERVER_HOST", "127.0.0.1")
+PORT = int(os.getenv("CHAT_SERVER_PORT", "5000"))
+
+print(f"[DEBUG] Connecting to server at {HOST}:{PORT}")
 
 last_message_id = 0         
 stop_event = threading.Event()
@@ -32,6 +49,24 @@ def recv_one_line(conn: socket.socket):
         return None
     return json.loads(data.split("\n")[0])
 
+
+# Here we are formatting the timestamp for display
+def format_ts(ts_str: str) -> str:
+    """
+    Convert server timestamp string to a compact local time like HH:MM.
+    Falls back to the original string if parsing fails.
+    """
+    try:
+        # Support both '...Z' and '+00:00' or with space separator
+        cleaned = ts_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(cleaned)
+        # Ensure timezone-aware, then convert to local system time
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local_dt = dt.astimezone()  # convert to local timezone
+        return local_dt.strftime("%H:%M")
+    except Exception:
+        return ts_str
 
 # Here we are receiving the data from the server. This thread is the ONLY place that calls recv().
 def receiver_loop(conn: socket.socket):
@@ -67,11 +102,13 @@ def receiver_loop(conn: socket.socket):
                 if rtype == "new_message":
                     sender = msg.get("from", "???")
                     content = msg.get("content", "")
+                    ts = format_ts(msg.get("timestamp", ""))
                     mid = msg.get("id", 0)
                     # Deduplicate against poll results by checking id progression
                     if mid > last_message_id:
                         if sender != current_username:
-                            print(f"\n[{sender}] {content}")
+                            prefix = f"[{ts}] " if ts else ""
+                            print(f"\n{prefix}[{sender}] {content}")
                         last_message_id = mid
                         print("> ", end="", flush=True)
 
@@ -81,10 +118,12 @@ def receiver_loop(conn: socket.socket):
                     for m in messages:
                         sender = m.get("sender", "???")
                         content = m.get("content", "")
+                        ts = format_ts(m.get("timestamp", ""))
                         mid = m.get("id", 0)
                         # Print only unseen messages
                         if mid > last_message_id:
-                            print(f"\n[{sender}] {content}")
+                            prefix = f"[{ts}] " if ts else ""
+                            print(f"\n{prefix}[{sender}] {content}")
                             last_message_id = mid
                     if messages:
                         print("> ", end="", flush=True)
@@ -97,6 +136,13 @@ def receiver_loop(conn: socket.socket):
 
 # Here we are polling the server for new messages
 def poll_loop(conn: socket.socket):
+    """
+    Periodically asking the server for any messages with id > last_message_id.
+
+    This function:
+    - Sends `{"action": "poll", "last_id": last_message_id}` every second.
+    - Does NOT call `recv()`. Responses are processed by `receiver_loop`.
+    """
     global last_message_id
 
     while not stop_event.is_set():
@@ -116,6 +162,9 @@ def auth_flow(conn: socket.socket):
     """
     Here we are handling the menu for login/register.
     Here we are running before starting the receiver threads.
+    
+    Returns:
+        str: The username of the successfully logged-in user.
     """
     while True:
         print("\n1. Login")
@@ -188,8 +237,15 @@ def auth_flow(conn: socket.socket):
             # Here we are going back to the menu
 
 
-# Here we are the main function of the client
+# Here we are in  the main function of the client
 def main():
+    
+    """
+    Here we are in the entry point for the chat client.
+
+   
+    """
+    
     global stop_event, current_username
 
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
